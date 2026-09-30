@@ -1,0 +1,67 @@
+services:
+
+  image-source:
+    image: ghcr.io/insight-platform/savant-adapters-gstreamer:latest
+    volumes:
+      - zmq_sockets_image:/tmp/zmq-sockets
+      - ./images:/images:ro
+    environment:
+      - SOURCE_ID=railway-image-test
+      - LOCATION=/images
+      - FILE_TYPE=image
+      - EOS_ON_FRAME_PARAMS_CHANGE=True
+      - ZMQ_ENDPOINT=req+connect:ipc:///tmp/zmq-sockets/input-image.ipc
+    entrypoint: /opt/savant/adapters/gst/sources/media_files.sh
+    depends_on:
+      module-image:
+        condition: service_healthy
+
+  module-image:
+    privileged: true
+    image: ghcr.io/insight-platform/savant-deepstream:latest
+    restart: unless-stopped
+
+    extra_hosts:
+    - "host.docker.internal:host-gateway"
+
+    ports:
+      - "8081:8080"
+    volumes:
+      - zmq_sockets_image:/tmp/zmq-sockets
+      - ../../cache:/cache
+      - ..:/opt/savant/samples
+      - ./models:/models
+      - ./output_images_DT:/opt/savant/samples/railway_monitoring/output_images_DT
+    command: samples/railway_monitoring/module.yml
+    environment:
+      - SHUTDOWN_AUTH=shutdown
+      - MODEL_PATH=/models
+      - ZMQ_SRC_ENDPOINT=rep+bind:ipc:///tmp/zmq-sockets/input-image.ipc
+      - ZMQ_SINK_ENDPOINT=pub+bind:ipc:///tmp/zmq-sockets/output-image.ipc
+      - CODEC=jpeg
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  image-sink:
+    image: ghcr.io/insight-platform/savant-adapters-py:latest
+    volumes:
+      - zmq_sockets_image:/tmp/zmq-sockets
+      - ./output_images_DT:/output
+    environment:
+      - ZMQ_ENDPOINT=sub+connect:ipc:///tmp/zmq-sockets/output-image.ipc
+      - DIR_LOCATION=/output/%source_id-%src_filename
+      - CHUNK_SIZE=0
+      - SKIP_FRAMES_WITHOUT_OBJECTS=False
+      - METADATA_JSON_FORMAT=native
+    entrypoint: /opt/savant/adapters/python/sinks/image_files.py
+    depends_on:
+      module-image:
+        condition: service_healthy
+
+volumes:
+  zmq_sockets_image:

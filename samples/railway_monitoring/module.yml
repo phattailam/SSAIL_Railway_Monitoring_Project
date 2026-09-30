@@ -1,0 +1,119 @@
+name: railway_monitoring
+
+parameters:
+  output_frame:
+    codec: ${oc.env:CODEC, 'raw-rgba'}
+
+  draw_func:
+    module: savant.deepstream.drawfunc
+    class_name: NvDsDrawFunc
+    rendered_objects:
+      slope_soil_failure_detector:
+        slope_soil_failure:
+          bbox:
+            thickness: 5
+          label:
+            format: [ '{label}', '{confidence:.2f}' ]
+
+      foreign_object_detector:
+        Foreign-object:
+          bbox:
+            thickness: 5
+          label:
+            format: [ '{label}', '{confidence:.2f}' ]
+
+      fire_detector:
+        fire-on-railwaytrack:
+          bbox:
+            thickness: 5
+          label:
+            format: [ '{label}', '{confidence:.2f}' ]
+
+  batch_size: 1
+
+pipeline:
+  elements:
+    - element: nvinfer@detector
+      name: slope_soil_failure_detector
+      model:
+        format: onnx
+        model_file: best.onnx
+        batch_size: ${parameters.batch_size}
+
+        input:
+          shape: [3, 640, 640]
+          scale_factor: 0.00392156862745098
+          maintain_aspect_ratio: true
+          symmetric_padding: true
+
+        output:
+          layer_names: [output0]
+          num_detected_classes: 1
+          converter:
+            module: samples.railway_monitoring.converter
+            class_name: TensorToBBoxConverter
+            kwargs:
+              confidence_threshold: 0.25
+
+          objects:
+            - class_id: 0
+              label: slope_soil_failure
+
+    - element: nvinfer@detector
+      name: foreign_object_detector
+      model:
+        format: onnx
+        model_file: best.onnx
+        batch_size: ${parameters.batch_size}
+
+        input:
+          shape: [3, 640, 640]
+          scale_factor: 0.00392156862745098
+          maintain_aspect_ratio: true
+          symmetric_padding: true
+
+        output:
+          layer_names: [output0]
+          num_detected_classes: 1
+          converter:
+            module: samples.railway_monitoring.converter
+            class_name: TensorToBBoxConverter
+            kwargs:
+              confidence_threshold: 0.25
+
+          objects:
+            - class_id: 0
+              label: Foreign-object
+
+    - element: nvinfer@detector
+      name: fire_detector
+      model:
+        format: onnx
+        model_file: best.onnx
+        batch_size: ${parameters.batch_size}
+
+        input:
+          shape: [3, 640, 640]
+          scale_factor: 0.00392156862745098
+          maintain_aspect_ratio: true
+          symmetric_padding: true
+
+        output:
+          layer_names: [output0]
+          num_detected_classes: 1
+          converter:
+            module: samples.railway_monitoring.converter
+            class_name: TensorToBBoxConverter
+            kwargs:
+              confidence_threshold: 0.25
+
+          objects:
+            - class_id: 0
+              label: fire-on-railwaytrack
+
+
+    - element: pyfunc
+      name: vlm_client
+      module: samples.railway_monitoring.vlm_client
+      class_name: VLMClient
+

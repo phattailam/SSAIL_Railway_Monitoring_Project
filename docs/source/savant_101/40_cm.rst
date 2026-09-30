@@ -1,0 +1,22 @@
+Classification Unit
+===================
+
+The classifier unit is used for inferring models that produce classes and confidence scores. This is a special case of the attribute model unit, where the output is a single class and confidence score.
+
+.. note::
+    The '@classifier' suffix in the unit name is an alias for the attribute model unit. Read more about it in the :doc:`43_am` section.
+
+
+Example
+-------
+
+.. code-block:: yaml
+
+    - element: nvinfer@classifier
+      name: classifier_model
+      model:
+        format: onnx
+        remote:
+          url: s3://savant-data/models/classifier_model/classifier_model.zip
+          checksum_url: s3://savant-data/models/classifier_model/classifier_model.md5
+

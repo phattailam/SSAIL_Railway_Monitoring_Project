@@ -1,0 +1,135 @@
+"""Base model output converters."""
+
+from abc import abstractmethod
+from enum import Enum
+from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
+
+import cupy as cp
+import numpy as np
+
+from .model import AttributeModel, ComplexModel, ObjectModel
+from .pyfunc import BasePyFuncCallableImpl
+
+if TYPE_CHECKING:
+    from savant.deepstream.meta.frame import NvDsFrameMeta
+
+
+class TensorFormat(Enum):
+    """Enum of the array module to be used to represent the tensors."""
+
+    NumPy = 0
+    """NumPy."""
+
+    CuPy = 1
+    """Cupy."""
+
+
+class BaseOutputConverter(BasePyFuncCallableImpl):
+    """Base model output converter."""
+
+    tensor_format: TensorFormat = TensorFormat.NumPy
+    """Set to ``CuPy`` to get the ``output_layers`` tensors in the converter call
+    on the GPU as a ``cupy.ndarray``. Or set to ``NumPy`` to get tensors on the host
+    as a ``numpy.ndarray``.
+    """
+
+    @abstractmethod
+    def __call__(
+        self,
+        *output_layers: Union[np.ndarray, cp.ndarray],
+        model: ObjectModel,
+        roi: Tuple[float, float, float, float],
+        metadata: Optional['NvDsFrameMeta'] = None,
+    ) -> Any:
+        """Converts raw model output tensors to a model specific representation.
+
+        :param metadata: Frame metadata. Optional for backward compatibility.
+        """
+
+
+class BaseObjectModelOutputConverter(BaseOutputConverter):
+    """Base object model output converter."""
+
+    @abstractmethod
+    def __call__(
+        self,
+        *output_layers: Union[np.ndarray, cp.ndarray],
+        model: ObjectModel,
+        roi: Tuple[float, float, float, float],
+        metadata: Optional['NvDsFrameMeta'] = None,
+    ) -> Optional[np.ndarray]:
+        """Converts raw model output tensors to a numpy array that represents a
+        list of detected bboxes in the format ``(class_id, confidence, xc, yc,
+        width, height, [angle])`` in absolute coordinates computed with ``ROI``
+        information.
+
+        :param output_layers: Model output layer tensors
+        :param model: Object model, required parameters: input tensor shape,
+            maintain_aspect_ratio flag
+        :param roi: ``[top, left, width, height]`` of the rectangle
+            on which the model infers
+        :param metadata: Frame metadata. Optional for backward compatibility.
+        :return: BBox tensor ``(class_id, confidence, xc, yc, width, height, [angle])``
+            offset by roi upper left and scaled by roi width and height
+        """
+
+
+class BaseAttributeModelOutputConverter(BaseOutputConverter):
+    """Base attribute model output converter."""
+
+    @abstractmethod
+    def __call__(
+        self,
+        *output_layers: Union[np.ndarray, cp.ndarray],
+        model: AttributeModel,
+        roi: Tuple[float, float, float, float],
+        metadata: Optional['NvDsFrameMeta'] = None,
+    ) -> Optional[List[Tuple[str, Any, float]]]:
+        """Converts raw model output tensors to a list of values in several
+        formats:
+
+        * classification
+            * string label
+            * int or float value
+        * ReID
+            * extracted descriptor as a vector of values
+
+        and so on, depending on the task.
+
+        :param output_layers: Model output layer tensors
+        :param model: Attribute model
+        :param roi: ``[top, left, width, height]`` of the rectangle
+            on which the model infers
+        :param metadata: Frame metadata. Optional for backward compatibility.
+        :return: list of attributes values with confidences
+            ``(attr_name, value, confidence)``
+        """
+
+
+class BaseComplexModelOutputConverter(BaseOutputConverter):
+    """Base complex model output converter."""
+
+    @abstractmethod
+    def __call__(
+        self,
+        *output_layers: Union[np.ndarray, cp.ndarray],
+        model: ComplexModel,
+        roi: Tuple[float, float, float, float],
+        metadata: Optional['NvDsFrameMeta'] = None,
+    ) -> Optional[Tuple[np.ndarray, List[List[Tuple[str, Any, float]]]]]:
+        """Converts raw model output tensors to Savant format.
+
+        :param output_layers: Model output layer tensors
+        :param model: Complex model, required parameters: input tensor shape,
+            maintain_aspect_ratio flag
+        :param roi: ``[top, left, width, height]`` of the rectangle
+            on which the model infers
+        :param metadata: Frame metadata. Optional for backward compatibility.
+        :return: a combination of :py:class:`.BaseObjectModelOutputConverter` and
+            :py:class:`.BaseAttributeModelOutputConverter` outputs:
+
+            * BBox tensor ``(class_id, confidence, xc, yc, width, height, [angle])``
+              offset by roi upper left and scaled by roi width and height,
+            * list of attributes values with confidences
+              ``(attr_name, value, confidence)``
+        """

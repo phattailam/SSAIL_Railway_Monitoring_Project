@@ -1,0 +1,60 @@
+#!/bin/bash
+
+test_img=ubuntu
+# remember if image existed locally
+# shellcheck disable=SC2006
+docker_run=$(docker inspect --type=image $test_img)
+image_exists=$?
+
+platform=$(uname -m)
+
+docker_runtime="--gpus=all"
+if [[ $platform == "aarch64" ]]; then
+  docker_runtime="--runtime=nvidia"
+fi
+
+# check docker engine & nvidia-container-runtime
+docker_run=$(docker run --rm $docker_runtime $test_img)
+retVal=$?
+
+# delete only if the test image did not exist locally
+if [ $image_exists -eq 1 ]; then
+    image_rm=$(docker image rm $test_img)
+fi
+
+if [ $retVal -ne 0 ]; then
+    echo "Docker run failed"
+    echo "Environment is not configured properly"
+    exit 1
+fi
+
+if [[ $platform == "x86_64" ]]; then
+    echo "PC platform"
+    # check driver version
+    req_ver=535
+    driver_version=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader --id=0 | cut -d'.' -f 1)
+    if (( driver_version < req_ver )); then
+        echo "Driver ver >= $req_ver is required"
+        echo "Environment is not configured properly"
+        exit 1
+    fi
+
+elif [[ $platform == "aarch64" ]]; then
+    echo "Jetson platform"
+    # check L4T ver
+    req_ver=36
+    l4t_ver=$(dpkg-query --showformat=\$\{Version\} --show nvidia-l4t-core | cut -d'-' -f 1)
+    IFS='.' read -ra l4t_split_ver <<< "$l4t_ver"
+    if (( l4t_split_ver[0] < req_ver)); then
+        echo "L4T ver >= $req_ver is required"
+        echo "Environment is not configured properly"
+        exit 1
+    fi
+
+else
+  echo "Unsupported platform"
+  exit 1
+fi
+
+echo "Environment is OK"
+exit 0

@@ -1,0 +1,383 @@
+# Build and publish packages, docker images and documentation
+name: main
+
+on:
+  push:
+    tags: ['v*.*.*']
+    branches: ['develop']
+    paths-ignore:
+      - '.devcontainer'
+      - 'samples'
+      - 'tests'
+      - 'CODE_OF_CONDUCT.md'
+      - 'README.md'
+      - 'PREPARE_RELEASE.md'
+      - 'docs/performance.md'
+      - 'docs/README.md'
+
+  # to run this workflow manually from the Actions tab
+  # the init job fails if branch is different from 'releases/*.*.*' or 'develop'
+  # TODO: Add inputs to select a part of the workflow to run (e.g. build docs only)
+  workflow_dispatch:
+
+# allow one concurrent deployment
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref_name }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+
+  init:
+    runs-on: ubuntu-latest
+    outputs:
+      savant-version: ${{ steps.get-savant-version.outputs.savant-version }}
+      savant-rs-version: ${{ steps.get-savant-version.outputs.savant-rs-version }}
+      deepstream-version: ${{ steps.get-savant-version.outputs.deepstream-version }}
+      savant-deepstream-tag: ${{ steps.get-docker-vars.outputs.deepstream-tag }}
+      savant-adapters-tag: ${{ steps.get-docker-vars.outputs.adapters-tag }}
+      docs-docker-image: ${{ steps.get-docker-vars.outputs.docs-docker-image }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: get-savant-version
+        uses: ./.github/actions/get-savant-version
+
+      - id: get-docker-vars
+        run: |
+          DEEPSTREAM_TAG=latest
+          ADAPTERS_TAG=latest
+          if [ "${{ github.ref_name }}" != "develop" ]; then
+            TAG=${{ github.ref_name }}
+            if [ "${{ github.ref_type }}" == "branch" ]; then
+              if [[ "$TAG" != releases/* ]]; then
+                echo "::error::Wrong branch"
+                exit 1
+              fi
+              TAG="v${TAG/releases\//}"
+            fi
+            echo "detected tag $TAG"
+            if [ "$TAG" != "v${{ steps.get-savant-version.outputs.savant-version }}" ]; then
+              echo "::error::Tag and Savant version mismatch"
+              exit 1
+            fi
+            DEEPSTREAM_TAG=${{ steps.get-savant-version.outputs.savant-version }}-${{ steps.get-savant-version.outputs.deepstream-version }}
+            ADAPTERS_TAG=${{ steps.get-savant-version.outputs.savant-version }}
+          fi
+          echo "deepstream-tag=$DEEPSTREAM_TAG" >> $GITHUB_OUTPUT
+          echo "adapters-tag=$ADAPTERS_TAG" >> $GITHUB_OUTPUT
+          echo "docs-docker-image=${{ env.REGISTRY }}/${{ github.repository_owner }}/savant-deepstream:$DEEPSTREAM_TAG" >> $GITHUB_OUTPUT
+        shell: bash
+
+  # build deepstream dockers
+  build-savant-deepstream:
+    needs: init
+    runs-on:
+      group: ${{ matrix.group }}
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - docker_file: docker/Dockerfile.deepstream
+            docker_image_suffix: deepstream
+            group: native-builders-x86
+          - docker_file: docker/Dockerfile.deepstream
+            docker_image_suffix: deepstream-l4t
+            group: native-builders-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Determine base image
+        run: |
+          DEEPSTREAM_VERSION=${{ needs.init.outputs.deepstream-version }}
+          DEEPSTREAM_BASE_IMAGE=nvcr.io/nvidia/deepstream:${DEEPSTREAM_VERSION}-samples-multiarch
+          DEEPSTREAM_DEVEL_IMAGE=nvcr.io/nvidia/deepstream:${DEEPSTREAM_VERSION}-triton-multiarch          
+          if [ "${{ matrix.group }}" = "native-builders-x86" ]; then
+            if [ "${DEEPSTREAM_VERSION}" = "7.1" ]; then
+              DEEPSTREAM_BASE_IMAGE=ghcr.io/insight-platform/deepstream:7.1.0-samples
+              DEEPSTREAM_DEVEL_IMAGE=ghcr.io/insight-platform/deepstream:7.1.0-devel
+            fi
+          fi
+          echo "DEEPSTREAM_BASE_IMAGE=${DEEPSTREAM_BASE_IMAGE}" >> $GITHUB_ENV
+          echo "DEEPSTREAM_DEVEL_IMAGE=${DEEPSTREAM_DEVEL_IMAGE}" >> $GITHUB_ENV
+
+      # base image
+      - name: Build and push savant-deepstream docker image
+        uses: docker/build-push-action@v6
+        with:
+          file: ${{ matrix.docker_file }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/savant-${{ matrix.docker_image_suffix }}:${{ needs.init.outputs.savant-deepstream-tag }}
+          build-args: |
+            SAVANT_VERSION=${{ needs.init.outputs.savant-version }}
+            SAVANT_RS_VERSION=${{ needs.init.outputs.savant-rs-version }}
+            DEEPSTREAM_VERSION=${{ needs.init.outputs.deepstream-version }}
+            DEEPSTREAM_BASE_IMAGE=${{ env.DEEPSTREAM_BASE_IMAGE }}
+            DEEPSTREAM_DEVEL_IMAGE=${{ env.DEEPSTREAM_DEVEL_IMAGE }}
+          target: base
+          push: true
+
+      # adapters image
+      - name: Build and push savant-adapters-deepstream docker image
+        uses: docker/build-push-action@v6
+        with:
+          file: ${{ matrix.docker_file }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/savant-adapters-${{ matrix.docker_image_suffix }}:${{ needs.init.outputs.savant-deepstream-tag }}
+          build-args: |
+            SAVANT_VERSION=${{ needs.init.outputs.savant-version }}
+            SAVANT_RS_VERSION=${{ needs.init.outputs.savant-rs-version }}
+            DEEPSTREAM_VERSION=${{ needs.init.outputs.deepstream-version }}
+            DEEPSTREAM_BASE_IMAGE=${{ env.DEEPSTREAM_BASE_IMAGE }}
+            DEEPSTREAM_DEVEL_IMAGE=${{ env.DEEPSTREAM_DEVEL_IMAGE }}
+          target: adapters
+          push: true
+
+      # extra image
+      - name: Build and push savant-deepstream-extra docker image
+        uses: docker/build-push-action@v6
+        with:
+          file: ${{ matrix.docker_file }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/savant-${{ matrix.docker_image_suffix }}-extra:${{ needs.init.outputs.savant-deepstream-tag }}
+          build-args: |
+            SAVANT_VERSION=${{ needs.init.outputs.savant-version }}
+            SAVANT_RS_VERSION=${{ needs.init.outputs.savant-rs-version }}
+            DEEPSTREAM_VERSION=${{ needs.init.outputs.deepstream-version }}
+            DEEPSTREAM_BASE_IMAGE=${{ env.DEEPSTREAM_BASE_IMAGE }}
+            DEEPSTREAM_DEVEL_IMAGE=${{ env.DEEPSTREAM_DEVEL_IMAGE }}
+          target: ${{ matrix.docker_image_suffix }}-extra
+          push: true
+
+  # build adapter's dockers (except deepstream adapters)
+  build-savant-adapters:
+    needs: init
+    runs-on:
+      group: ${{ matrix.group }}
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - docker_file: docker/Dockerfile.adapters-gstreamer
+            docker_image: savant-adapters-gstreamer
+            group: native-builders-x86
+          - docker_file: docker/Dockerfile.adapters-gstreamer
+            docker_image: savant-adapters-gstreamer-l4t
+            group: native-builders-arm
+          - docker_file: docker/Dockerfile.adapters-py
+            docker_image: savant-adapters-py
+            group: native-builders-x86
+          - docker_file: docker/Dockerfile.adapters-py
+            docker_image: savant-adapters-py-l4t
+            group: native-builders-arm
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Build and push docker image
+        uses: docker/build-push-action@v6
+        with:
+          file: ${{ matrix.docker_file }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.docker_image }}:${{ needs.init.outputs.savant-adapters-tag }}
+          build-args: |
+            SAVANT_VERSION=${{ needs.init.outputs.savant-version }}
+            SAVANT_RS_VERSION=${{ needs.init.outputs.savant-rs-version }}
+            DEEPSTREAM_VERSION=${{ needs.init.outputs.deepstream-version }}
+          push: true
+
+  # build watchdog
+  build-savant-watchdog:
+    needs: init
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - docker_file: services/watchdog/Dockerfile
+            docker_image: savant-watchdog
+            arch: linux/amd64
+          - docker_file: services/watchdog/Dockerfile
+            docker_image: savant-watchdog-l4t
+            arch: linux/arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # setup-docker action ---
+      - name: Log in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up docker buildx
+        uses: docker/setup-buildx-action@v3
+      # --- setup-docker action
+
+      - name: Build and push docker image
+        uses: docker/build-push-action@v6
+        with:
+          file: ${{ matrix.docker_file }}
+          tags: |
+            ${{ env.REGISTRY }}/${{ github.repository_owner }}/${{ matrix.docker_image }}:${{ needs.init.outputs.savant-adapters-tag }}
+          platforms: ${{ matrix.arch }}
+          push: true
+
+  # retag replay containers
+  retag-savant-rs-platform-containers:
+    needs: [init, build-savant-deepstream, build-savant-adapters, build-savant-watchdog]
+    runs-on: ubuntu-latest
+
+    permissions:
+      packages: write
+
+    steps:
+      - name: Log in to the container registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Set up docker buildx
+        uses: docker/setup-buildx-action@v3
+          
+      - name: Retag savant-rs platform containers
+        run: |
+          # Set tag based on the reference
+          TAG_NAME=$(if [[ "${{ github.ref }}" == "refs/heads/develop" ]]; then 
+            echo "savant-latest"; 
+          else 
+            echo "v${{ needs.init.outputs.savant-version }}"; 
+          fi)
+          
+          # List of images to retag
+          IMAGES=(
+            "savant-replay-x86"
+            "savant-replay-arm64"
+            "savant-retina-rtsp-x86"
+            "savant-retina-rtsp-arm64"
+            "savant-router-x86"
+            "savant-router-arm64"
+            "savant-rs-py313"
+            "savant-rs-py314"
+            "savant-buffer-ng-x86"
+            "savant-buffer-ng-arm64"
+            "savant-meta-merge-x86"
+            "savant-meta-merge-arm64"
+          )
+          
+          # Retag each image using docker buildx imagetools
+          for image in "${IMAGES[@]}"; do
+            echo "Retagging $image..."
+            docker buildx imagetools create \
+              --tag ${{ env.REGISTRY }}/insight-platform/$image:$TAG_NAME \
+              ${{ env.REGISTRY }}/insight-platform/$image:${{ needs.init.outputs.savant-rs-version }}-rolling
+          done
+
+  # build documentation
+  build-docs:
+    needs: [init, build-savant-deepstream]
+    runs-on:
+      group: native-builders-x86
+    container:
+      image: ${{ needs.init.outputs.docs-docker-image }}
+    permissions:
+      contents: write
+    env:
+      MODE: ${{ github.ref_name == 'develop' && 'develop' || 'release' }}
+
+    steps:
+      - name: Install git-lfs
+        run: |
+          apt update && apt install --no-install-recommends -y git-lfs
+
+      - uses: actions/checkout@v4
+        with:
+          lfs: true
+
+      - name: Install dependencies
+        run: |
+          apt update && apt install --no-install-recommends -y graphviz
+          python -m pip install --upgrade pip
+          python -m pip install -r docs/requirements.txt
+
+      - name: Build documentation
+        run: |
+          cd docs
+          make clean html
+
+      # release ---
+      - name: Archive documentation
+        if: github.ref_name != 'develop'
+        run: |
+          tar \
+            --dereference --hard-dereference \
+            --directory docs/build/html \
+            -cvf docs.tar \
+            .
+
+      - name: Attach to release
+        if: github.ref_name != 'develop'
+        uses: softprops/action-gh-release@v1
+        with:
+          files: docs.tar
+      # --- release
+
+      # develop ---
+      - name: Compose docs
+        if: github.ref_name == 'develop'
+        run: |
+          ./docs/source/gh_script.py ${{ github.repository }} ${{ github.token }} docs/root ${{ vars.DOCS_URL }}
+          mv docs/build/html docs/root/latest
+          mv docs/root/versions.js docs/root/latest/_static/js/versions.js
+
+      - name: Upload docs artifact
+        if: github.ref_name == 'develop'
+        uses: actions/upload-artifact@v4
+        with:
+          name: docs
+          path: docs/root
+
+      - name: Trigger website rebuild
+        if: github.ref_name == 'develop'
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ secrets.CROSS_REPO_TOKEN }}
+          repository: insight-platform/savant-ai.io
+          event-type: savant-docs-updated
+      # --- develop

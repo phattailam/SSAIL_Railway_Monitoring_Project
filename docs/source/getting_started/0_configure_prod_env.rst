@@ -1,0 +1,136 @@
+Configure The Runtime Environment
+=================================
+
+The section discusses how to configure the host system for Savant modules execution. Savant modules and adapters are run in the docker environment. This document describes how to configure the dockerized runtime.
+
+General Requirements
+--------------------
+
+:repo-link:`Savant` runs on top of DeepStream ecosystem, therefore, it requires DeepStream to be supported by the host system. The section observes the supported configurations. The recommended spare space in a filesystem where docker images are stored is **15 GB**.
+
+Data Center, Professional And Desktop Hardware
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Docker with Compose, Nvidia GPU drivers 570.133.20+;
+
+Edge Hardware
+^^^^^^^^^^^^^
+
+Docker with Compose, Jetpack 6.2 GA on Jetson AGX Orin, Orin NX, Orin Nano.
+
+Nvidia Jetson Setup
+-------------------
+
+An Nvidia Jetson device is almost ready to run Savant after setup. You only need to install **Compose** plugin for Docker. Follow the official `guide <https://docs.docker.com/compose/install/linux/>`_ to install it.
+
+After the installation disable the default Nvidia runtime for all images to properly use Savant sample compose files. This is necessary because particular containers can work in GPU-accelerated modes and others in CPU-only modes. To disable the runtime for all images, remove the following line from the ``/etc/docker/daemon.json`` file like demonstrated:
+
+.. code-block:: json
+
+   {
+     "default-runtime": "nvidia",  /* remove this line */
+     "runtimes": {
+        "nvidia": {
+            "path": "nvidia-container-runtime",
+            "runtimeArgs": []
+        }
+     }
+   }
+
+Restart the Docker service to apply the changes:
+
+.. code-block:: bash
+
+   sudo systemctl restart docker
+
+.. note::
+
+    This step is crucial for the Jetson Orin Nano device because it has particular limitations because of NVENC absence and, thus, requires AO-RTSP to work on CPU.
+
+
+Ubuntu 22.04 Setup
+------------------
+
+At the current moment, we provide the instruction on how to configure Ubuntu 22.04 runtime. If you use another operation system, adapt the instructions to your OS.
+
+Update Packages and Install Basic Tools
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: bash
+
+   sudo apt-get update
+   sudo apt-get install -y git git-lfs curl -y
+
+Install Docker
+^^^^^^^^^^^^^^
+
+.. code-block:: bash
+
+   curl -fsSL https://get.docker.com -o get-docker.sh
+   sudo sh get-docker.sh
+
+Install Nvidia Drivers
+^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: bash
+
+   sudo apt install --no-install-recommends nvidia-driver-570 # or a newer version
+   sudo reboot
+
+Install Nvidia Container Toolkit
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: bash
+
+   distribution=$(. /etc/os-release;echo $ID$VERSION_ID)
+   curl -s -L https://nvidia.github.io/nvidia-docker/gpgkey | sudo apt-key add -
+   curl -s -L https://nvidia.github.io/nvidia-docker/$distribution/nvidia-docker.list | sudo tee /etc/apt/sources.list.d/nvidia-docker.list
+
+   sudo apt-get update
+   sudo apt-get install -y nvidia-container-toolkit
+   sudo systemctl restart docker
+
+Test The Nvidia Container Runtime Works Properly (X86 only)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+.. code-block:: bash
+
+   sudo docker run --rm --gpus all nvidia/cuda:12.1.1-base-ubuntu22.04 nvidia-smi
+
+Test Docker Ecosystem Works Properly
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If you are on X86 + Nvidia dGPU:
+
+.. code-block:: bash
+
+   sudo docker compose -f samples/opencv_cuda_bg_remover_mog2/docker-compose.x86.yml up
+   # press Ctrl+C to stop the container
+
+If you are on Jetson:
+
+.. code-block:: bash
+
+   sudo docker compose -f samples/opencv_cuda_bg_remover_mog2/docker-compose.l4t.yml up
+   # press Ctrl+C to stop the container
+
+Check that streaming works properly:
+
+.. code-block:: bash
+
+   ffplay rtsp://127.0.0.1:554/stream/road-traffic-processed
+
+You must see the video stream as demonstrated in the following Youtube video:
+
+.. youtube:: ZCXOSqklgb0
+
+Disable SUDO for Docker
+^^^^^^^^^^^^^^^^^^^^^^^
+
+We often assume that Docker is available without ``sudo``, for simplicity you can add your user into the ``docker`` group to avoid using ``sudo``.
+
+.. code-block:: bash
+
+   sudo groupadd docker
+   sudo usermod -aG docker $USER
+   newgrp docker

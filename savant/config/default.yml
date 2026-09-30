@@ -1,0 +1,237 @@
+# module name, required
+name: ${oc.env:MODULE_NAME}
+
+# base module parameters
+parameters:
+  # Logging specification string in the rust env_logger's format
+  # https://docs.rs/env_logger/latest/env_logger/
+  # The string is parsed and Python logging is set up accordingly
+  # e.g. "info", or "info,insight::savant::target=debug"
+  log_level: ${oc.env:LOGLEVEL, 'INFO'}
+
+  # the port which embedded web server binds
+  webserver_port: ${oc.decode:${oc.env:WEBSERVER_PORT, 8080}}
+
+  # required paths
+  # the path to the models directory within the module container
+  model_path: ${oc.env:MODEL_PATH, /models}
+  # the path to the downloads directory within the module container
+  download_path: ${oc.env:DOWNLOAD_PATH, /downloads}
+
+  # Etcd storage configuration (see savant.parameter_storage.EtcdStorageConfig).
+  # Etcd is used to store dynamic module parameters.
+  #etcd:
+  #  # Etcd hosts to connect to
+  #  hosts: [127.0.0.1:2379]
+  #  # Path in Etcd to watch changes
+  #  watch_path: savant
+
+  # pipeline processing frame parameters, use the source resolution if not set
+  frame:
+    width: ${oc.decode:${oc.env:FRAME_WIDTH, null}}
+    height: ${oc.decode:${oc.env:FRAME_HEIGHT, null}}
+    # Add paddings to the frame before processing
+    # padding:
+    #   # Whether to keep paddings on the output frame
+    #   keep: true
+    #   left: 0
+    #   right: 0
+    #   top: 0
+    #   bottom: 0
+    # Base value for frame parameters. All frame parameters must be divisible by this value.
+    # Default is 8.
+    # geometry_base: 8
+    # Custom source shaper parameters.
+    # The class must implement savant.base.source_shaper.BaseSourceShaper.
+    # shaper:
+    #   module: samples.source_shaper_sample.custom_source_shaper
+    #   class_name: CustomSourceShaper
+    #   kwargs:
+    #     foo: bar
+
+  # Maximum number of frames from the same source to process in a batch. Default is equal to batch_size.
+  # max_same_source_frames: 1
+  # Minimum desired FPS. Applied when max_same_source_frames is less than batch_size.
+  min_fps: ${oc.env:MIN_FPS, 30/1}
+  # Turn on/off limiting the maximum FPS per source.
+  max_fps_control: ${oc.decode:${oc.env:MAX_FPS_CONTROL, False}}
+  # Maximum desired FPS.
+  max_fps: ${oc.env:MAX_FPS, 30/1}
+
+  # pipeline output queue max size
+  queue_maxsize: 100
+
+  # Maximum number of parallel source streams to process.
+  max_parallel_streams: 64
+
+  # Configuration of the queues in GStreamer pipeline after demuxer.
+  # Length of the egress queue in frames (0 - no limit, default 200).
+  egress_queue_length: ${oc.decode:${oc.env:EGRESS_QUEUE_LENGTH, null}}
+  # Size of the egress queue in bytes (0 - no limit, default 10485760).
+  egress_queue_byte_size: ${oc.decode:${oc.env:EGRESS_QUEUE_BYTE_SIZE, null}}
+
+  # Buffer pool size configuration in DeepStream pipeline.
+  # Per stream buffer pool size (nvvideoconvert, output-buffers).
+  stream_buffer_pool_size: ${oc.decode:${oc.env:STREAM_BUFFER_POOL_SIZE, null}}
+  # Muxer buffer pool size (nvstreammux, buffer-pool-size).
+  muxer_buffer_pool_size: ${oc.decode:${oc.env:MUXER_BUFFER_POOL_SIZE, null}}
+
+  # TODO: create class for output_frame
+  # parameters of a frame to include in module output
+  # leave empty to include only metadata (no frames)
+  output_frame: ${json:${oc.env:OUTPUT_FRAME, null}}
+  # E.g.:
+  # output_frame:
+  #   codec: h264
+  #   encoder: nvenc
+  #   encoder_params:
+  #     iframeinterval: 25
+  #   condition:
+  #     tag: encode
+  #  # Profile for software h264 encoder. Can be "baseline", "main", "high".
+  #  # Default is "baseline".
+  #  profile: baseline
+
+  # Codec parameters for auxiliary streams.
+  # Used to check whether the codec is supported by the pipeline.
+  # auxiliary_encoders:
+  #   - codec: h264
+  #     encoder: nvenc
+  #   encoder_params:
+  #     iframeinterval: 25
+
+  # PyFunc for drawing on frames. Should be an instance of savant.config.schema.DrawFunc.
+  #
+  # To not draw on frames leave "null".
+  #
+  # To use default class to draw on frames use an empty object ("{}")
+  # E.g.:
+  # draw_func: {}
+  #
+  # Or:
+  # draw_func:
+  #   condition:
+  #     tag: draw
+  #
+  # To use custom class to draw on frames define "module", "class_name" and "kwargs".
+  # E.g.:
+  # draw_func:
+  #   module: custom.drawer
+  #   class_name: CustomDrawer
+  #   kwargs:
+  #     color: RED
+  #   condition:
+  #     tag: draw
+  # Class to draw on frames must implement savant.deepstream.base_drawfunc.BaseNvDsDrawFunc.
+  draw_func: null
+
+  # When set queue elements will be added in the pipeline before and after pyfunc elements.
+  # It can be used to run pyfunc elements in separate threads.
+  # buffer_queues:
+  #   # Length of the queue in buffers (0 - no limit), default 10.
+  #   length: 10
+  #   # Size of the queue in bytes (0 - no limit), default 0.
+  #   byte_size: 0
+  buffer_queues: null
+
+  # Configure telemetry
+  # Example:
+  # telemetry:
+  #   tracing:
+  #     sampling_period: 100
+  #     append_frame_meta_to_span: False
+  #     root_span_name: demo-pipeline-root
+  #     provider: opentelemetry
+  #     # or (mutually exclusive with provider_params, high priority)
+  #     provider_params_config: /path/to/provider_config.json
+  #     # or (mutually exclusive with provider_params_config, low priority)
+  #     provider_params:
+  #       service_name: demo-pipeline
+  #       protocol: grpc
+  #       endpoint: "http://jaeger:4317"
+  #       timeout: 5000 # milliseconds
+  #       tls:
+  #         ca: /path/to/ca.crt
+  #         identity:
+  #             certificate: /path/to/client.crt
+  #             key: /path/to/client.key
+  #   metrics:
+  #     frame_period: 1000
+  #     time_period: 1
+  #     history: 100
+  #     provider: prometheus
+  #     provider_params:
+  #       port: 8000
+  telemetry:
+    # Configure tracing
+    tracing:
+      # Sampling period in frames
+      sampling_period: ${oc.decode:${oc.env:TRACING_SAMPLING_PERIOD, 100}}
+      # Append frame metadata to telemetry span
+      append_frame_meta_to_span: ${oc.decode:${oc.env:TRACING_APPEND_FRAME_META_TO_SPAN, False}}
+      # Name for root span
+      root_span_name: ${oc.decode:${oc.env:TRACING_ROOT_SPAN_NAME, null}}
+      # Tracing provider name
+      provider: ${oc.decode:${oc.env:TRACING_PROVIDER, null}}
+      # Parameters for tracing provider
+      provider_params_config: ${oc.decode:${oc.env:TRACING_PROVIDER_PARAMS_CONFIG, null}}
+      provider_params: ${json:${oc.env:TRACING_PROVIDER_PARAMS, null}}
+    # Configure metrics
+    metrics:
+      # Output stats after every N frames
+      frame_period: ${oc.decode:${oc.env:METRICS_FRAME_PERIOD, 10000}}
+      # Output stats after every N seconds
+      time_period: ${oc.decode:${oc.env:METRICS_TIME_PERIOD, null}}
+      # How many last stats to keep in the memory
+      history: ${oc.decode:${oc.env:METRICS_HISTORY, 100}}
+      # Parameters for metrics provider
+      extra_labels: ${json:${oc.env:METRICS_EXTRA_LABELS, null}}
+
+  # Flag controls whether user python modules (pyfuncs and drawfuncs)
+  # are monitored for changes during runtime
+  # and reloaded in case changes are detected
+  dev_mode: ${oc.decode:${oc.env:DEV_MODE, False}}
+
+  # Shutdown authorization key. If set, module will shut down when it receives
+  # a Shutdown message with this key.
+  # shutdown_auth: "shutdown-auth"
+
+# pipeline definition
+pipeline:
+  source:
+    element: zeromq_source_bin
+    properties:
+      socket: ${oc.env:ZMQ_SRC_ENDPOINT}
+      # Filter inbound frames by source ID.
+      source_id: ${oc.decode:${oc.env:SOURCE_ID, null}}
+      # Filter inbound frames by source ID prefix.
+      source_id_prefix: ${oc.decode:${oc.env:SOURCE_ID_PREFIX, null}}
+      # Timeout before deleting stale source (in seconds).
+      source_timeout: ${oc.decode:${oc.env:SOURCE_TIMEOUT, 10}}
+      # Interval between source eviction checks (in seconds).
+      source_eviction_interval: ${oc.decode:${oc.env:SOURCE_EVICTION_INTERVAL, 1}}
+      # Size of the source blacklist.
+      blacklist_size: ${oc.decode:${oc.env:SOURCE_BLACKLIST_SIZE, 1024}}
+      # TTL of the source blacklist in seconds.
+      blacklist_ttl: ${oc.decode:${oc.env:SOURCE_BLACKLIST_TTL, 10}}
+      # Length of the ingress queue in frames (0 - no limit, default 200).
+      ingress_queue_length: ${oc.decode:${oc.env:INGRESS_QUEUE_LENGTH, null}}
+      # Size of the ingress queue in bytes (0 - no limit, default 10485760).
+      ingress_queue_byte_size: ${oc.decode:${oc.env:INGRESS_QUEUE_BYTE_SIZE, null}}
+      # Length of the queue before decoder in frames (0 - no limit, default 5).
+      decoder_queue_length: ${oc.decode:${oc.env:DECODER_QUEUE_LENGTH, null}}
+      # Size of the queue before decoder in bytes (0 - no limit, default 10485760).
+      decoder_queue_byte_size: ${oc.decode:${oc.env:DECODER_QUEUE_BYTE_SIZE, null}}
+      # Send EOS on frame resolution change for JPEG and PNG codecs (default true).
+      eos_on_frame_resolution_change: ${oc.decode:${oc.env:EOS_ON_FRAME_RESOLUTION_CHANGE, null}}
+      # Enable low latency decoding (default false, only for hardware decoder "nvv4l2decoder").
+      # Do not enable it if input stream contains B-frames.
+      low_latency_decoding: ${oc.decode:${oc.env:LOW_LATENCY_DECODING, null}}
+
+# elements:
+# elements should be defined here
+
+  sink:
+    - element: zeromq_sink
+      properties:
+        socket: ${oc.env:ZMQ_SINK_ENDPOINT}

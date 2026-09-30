@@ -1,0 +1,136 @@
+services:
+
+  video-loop-source-01:
+    image: ghcr.io/insight-platform/savant-adapters-gstreamer:latest
+    restart: unless-stopped
+
+    volumes:
+      - zmq_sockets:/tmp/zmq-sockets
+      - ./Videos:/videos
+
+    environment:
+      - LOCATION=/videos/Set1/Set1_combined_h264.mp4
+      - DOWNLOAD_PATH=/tmp/video-loop-source-downloads
+      - ZMQ_ENDPOINT=pub+connect:ipc:///tmp/zmq-sockets/input-video.ipc
+      - SOURCE_ID=cctv_01
+      - SYNC_OUTPUT=True
+
+    entrypoint: /opt/savant/adapters/gst/sources/video_loop.sh
+
+    depends_on:
+      module:
+        condition: service_healthy
+
+
+  video-loop-source-02:
+    image: ghcr.io/insight-platform/savant-adapters-gstreamer:latest
+    restart: unless-stopped
+
+    volumes:
+      - zmq_sockets:/tmp/zmq-sockets
+      - ./Videos:/videos
+
+    environment:
+      - LOCATION=/videos/Set2/Set2_combined_h264.mp4
+      - DOWNLOAD_PATH=/tmp/video-loop-source-downloads
+      - ZMQ_ENDPOINT=pub+connect:ipc:///tmp/zmq-sockets/input-video.ipc
+      - SOURCE_ID=cctv_02
+      - SYNC_OUTPUT=True
+
+    entrypoint: /opt/savant/adapters/gst/sources/video_loop.sh
+
+    depends_on:
+      module:
+        condition: service_healthy
+
+  module:
+    privileged: true
+    image: ghcr.io/insight-platform/savant-deepstream:latest
+
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    volumes:
+      - zmq_sockets:/tmp/zmq-sockets
+      - ../../cache:/cache
+      - ..:/opt/savant/samples
+      - ./models:/models
+    command: samples/railway_monitoring/module.yml
+    environment:
+      - SHUTDOWN_AUTH=shutdown
+      - MODEL_PATH=/models
+      - ZMQ_SRC_ENDPOINT=sub+bind:ipc:///tmp/zmq-sockets/input-video.ipc
+      - ZMQ_SINK_ENDPOINT=pub+bind:ipc:///tmp/zmq-sockets/output-video.ipc
+      - CODEC=h264
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  always-on-sink-01:
+    privileged: true
+    image: ghcr.io/insight-platform/savant-adapters-deepstream:latest
+    restart: unless-stopped
+    ports:
+      - "8554:554"
+      - "8880:888"
+      - "8881:8889"
+    volumes:
+      - zmq_sockets:/tmp/zmq-sockets
+      - ../assets/stub_imgs:/stub_imgs
+    environment:
+      - ZMQ_ENDPOINT=sub+connect:ipc:///tmp/zmq-sockets/output-video.ipc
+      - SOURCE_ID=cctv_01
+      - FRAMERATE=25/1
+      - SYNC_INPUT=True
+      - STUB_FILE_LOCATION=/stub_imgs/smpte100_1280x900.jpeg
+      - DEV_MODE=True
+    command: python -m adapters.ds.sinks.always_on_rtsp
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+  always-on-sink-02:
+    privileged: true
+    image: ghcr.io/insight-platform/savant-adapters-deepstream:latest
+    restart: unless-stopped
+
+    ports:
+      - "8555:554"
+      - "8890:888"
+      - "8891:8889"
+
+    volumes:
+      - zmq_sockets:/tmp/zmq-sockets
+      - ../assets/stub_imgs:/stub_imgs
+
+    environment:
+      - ZMQ_ENDPOINT=sub+connect:ipc:///tmp/zmq-sockets/output-video.ipc
+      - SOURCE_ID=cctv_02
+      - FRAMERATE=25/1
+      - SYNC_INPUT=True
+      - STUB_FILE_LOCATION=/stub_imgs/smpte100_1280x900.jpeg
+      - DEV_MODE=True
+
+    command: python -m adapters.ds.sinks.always_on_rtsp
+
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+
+volumes:
+  zmq_sockets:
