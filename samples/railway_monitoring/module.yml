@@ -39,6 +39,7 @@ pipeline:
         format: onnx
         model_file: best.onnx
         batch_size: ${parameters.batch_size}
+        interval: 4
 
         input:
           shape: [3, 640, 640]
@@ -65,6 +66,7 @@ pipeline:
         format: onnx
         model_file: best.onnx
         batch_size: ${parameters.batch_size}
+        interval: 4
 
         input:
           shape: [3, 640, 640]
@@ -91,6 +93,7 @@ pipeline:
         format: onnx
         model_file: best.onnx
         batch_size: ${parameters.batch_size}
+        interval: 4
 
         input:
           shape: [3, 640, 640]
