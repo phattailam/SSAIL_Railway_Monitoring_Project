@@ -22,13 +22,23 @@ MASTER_ATTRIBUTES_FILE = Path(
 DESCRIPTION_MAX_NEW_TOKENS = 120
 ATTRIBUTE_MAX_NEW_TOKENS = 768
 
+# TARGET_ATTRIBUTE_IDS = [
+#     "M05",
+#     "M07",
+#     "M01",
+#     "M13",
+#     "M11",
+#     "M04",
+# ]
+
 TARGET_ATTRIBUTE_IDS = [
-    "M05",
     "M07",
-    "M01",
+    "M05",
     "M13",
+    "M01",
     "M11",
     "M04",
+    "M12",
 ]
 
 

@@ -39,7 +39,7 @@ pipeline:
         format: onnx
         model_file: best.onnx
         batch_size: ${parameters.batch_size}
-        interval: 4
+        interval: 24
 
         input:
           shape: [3, 640, 640]
@@ -66,7 +66,7 @@ pipeline:
         format: onnx
         model_file: best.onnx
         batch_size: ${parameters.batch_size}
-        interval: 4
+        interval: 24
 
         input:
           shape: [3, 640, 640]
@@ -81,7 +81,7 @@ pipeline:
             module: samples.railway_monitoring.converter
             class_name: TensorToBBoxConverter
             kwargs:
-              confidence_threshold: 0.25
+              confidence_threshold: 0.85
 
           objects:
             - class_id: 0
@@ -93,7 +93,7 @@ pipeline:
         format: onnx
         model_file: best.onnx
         batch_size: ${parameters.batch_size}
-        interval: 4
+        interval: 24
 
         input:
           shape: [3, 640, 640]
@@ -108,7 +108,7 @@ pipeline:
             module: samples.railway_monitoring.converter
             class_name: TensorToBBoxConverter
             kwargs:
-              confidence_threshold: 0.25
+              confidence_threshold: 0.5
 
           objects:
             - class_id: 0

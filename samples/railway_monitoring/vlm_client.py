@@ -30,7 +30,7 @@ class VLMClient(NvDsPyFuncPlugin):
 
         # General configuration
         self.vlm_api_url = (vlm_api_url)
-        self.results_root = Path("/opt/savant/samples/railway_monitoring/results")
+        self.results_root = Path("samples/railway_monitoring/results")
         self.results_root.mkdir(parents=True, exist_ok=True)
 
         # Per-camera temporal state
@@ -178,15 +178,15 @@ class VLMClient(NvDsPyFuncPlugin):
             )
         )
 
+        frame_name = f"frame_{frame_meta.frame_num:06d}.jpg"
+
         if frame_bgr is not None:
             save_detection_image(
                 self.results_root,
                 source_id,
                 frame_bgr,
                 detections,
-                frame_name=(
-                    f"frame_{frame_meta.frame_num:06d}"
-                ),
+                frame_name=(frame_name),
             )
 
         # --------------------------------------------------
@@ -245,8 +245,11 @@ class VLMClient(NvDsPyFuncPlugin):
 
             return
 
+
+
         job = {
             "source_id": source_id,
+            "frame_name": frame_name,
             "image_bytes": image_bytes,
             "detection": detection,
         }
@@ -320,7 +323,7 @@ class VLMClient(NvDsPyFuncPlugin):
 
         files = {
             "image": (
-                "frame.jpg",
+                job["frame_name"],
                 job["image_bytes"],
                 "image/jpeg",
             )

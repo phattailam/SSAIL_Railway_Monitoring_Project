@@ -31,7 +31,7 @@ from vlm_service.vlm_model import (
 # CONFIGURATION
 # ============================================================
 DECISION_TREE_MODEL_PATH = Path(
-    "/home/tailam/SSL/RAIL_PROJECT/Rule_discovery/Experiment_3/stage4C_semantic_classifier_results_400_two_stage_TRAIN_IMPORTANCE_RETRAIN/Feature_Set_B_slope_semantic_only/Decision_Tree_Importance_GT_0/decision_tree_reduced_FINAL_ALL_DATA.joblib"
+    "/home/tailam/SSL/RAIL_PROJECT/Rule_discovery/Experiment_3/stage4C_semantic_classifier_results_400_two_stage_TRAIN_IMPORTANCE_RETRAIN_1/Feature_Set_B_slope_semantic_only/Decision_Tree_Importance_GT_0/decision_tree_reduced_FINAL_ALL_DATA.joblib"
 )
 
 

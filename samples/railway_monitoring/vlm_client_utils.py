@@ -10,7 +10,7 @@ from savant.deepstream.opencv_utils import nvds_to_gpu_mat
 
 ALL_DETECTORS = {
     "slope_soil_failure_detector",
-    # "foreign_object_detector",
+    "foreign_object_detector",
     "fire_detector",
 }
 

@@ -9,7 +9,7 @@ services:
       - ./videos:/videos
 
     environment:
-      - LOCATION=/videos/YT/yt_h264.mp4
+      - LOCATION=/videos/Set1/cctv_186_20260708_090000_rain_h264.mp4
       - DOWNLOAD_PATH=/tmp/video-loop-source-downloads
       - ZMQ_ENDPOINT=pub+connect:ipc:///tmp/zmq-sockets/input-video.ipc
       - SOURCE_ID=cctv_01
@@ -31,7 +31,7 @@ services:
       - ./videos:/videos
 
     environment:
-      - LOCATION=/videos/Set2/Set2_combined_h264.mp4
+      - LOCATION=/videos/Set1/cctv_186_20260722_130000_heavyrain_h264.mp4
       - DOWNLOAD_PATH=/tmp/video-loop-source-downloads
       - ZMQ_ENDPOINT=pub+connect:ipc:///tmp/zmq-sockets/input-video.ipc
       - SOURCE_ID=cctv_02
@@ -42,6 +42,49 @@ services:
     depends_on:
       module:
         condition: service_healthy
+
+  video-loop-source-03:
+    image: ghcr.io/insight-platform/savant-adapters-gstreamer:latest
+    restart: unless-stopped
+
+    volumes:
+      - zmq_sockets:/tmp/zmq-sockets
+      - ./videos:/videos
+
+    environment:
+      - LOCATION=/videos/Set1/cctv_186_20260709_130000_rain_h264.mp4
+      - DOWNLOAD_PATH=/tmp/video-loop-source-downloads
+      - ZMQ_ENDPOINT=pub+connect:ipc:///tmp/zmq-sockets/input-video.ipc
+      - SOURCE_ID=cctv_03
+      - SYNC_OUTPUT=True
+
+    entrypoint: /opt/savant/adapters/gst/sources/video_loop.sh
+
+    depends_on:
+      module:
+        condition: service_healthy
+
+  video-loop-source-04:
+    image: ghcr.io/insight-platform/savant-adapters-gstreamer:latest
+    restart: unless-stopped
+
+    volumes:
+      - zmq_sockets:/tmp/zmq-sockets
+      - ./videos:/videos
+
+    environment:
+      - LOCATION=/videos/Set1/cctv_186_20260326_130000_h264.mp4
+      - DOWNLOAD_PATH=/tmp/video-loop-source-downloads
+      - ZMQ_ENDPOINT=pub+connect:ipc:///tmp/zmq-sockets/input-video.ipc
+      - SOURCE_ID=cctv_04
+      - SYNC_OUTPUT=True
+
+    entrypoint: /opt/savant/adapters/gst/sources/video_loop.sh
+
+    depends_on:
+      module:
+        condition: service_healthy
+
 
   module:
     privileged: true
@@ -87,7 +130,7 @@ services:
       - ../assets/stub_imgs:/stub_imgs
     environment:
       - ZMQ_ENDPOINT=sub+connect:ipc:///tmp/zmq-sockets/output-video.ipc
-      - SOURCE_IDS=cctv_01,cctv_02
+      - SOURCE_IDS=cctv_01,cctv_02,cctv_03,cctv_04
       - FRAMERATE=25/1
       - SYNC_INPUT=True
       - STUB_FILE_LOCATION=/stub_imgs/smpte100_1280x900.jpeg
